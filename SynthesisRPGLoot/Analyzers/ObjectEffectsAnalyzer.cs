@@ -2,6 +2,7 @@
 using System.Linq;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Synthesis;
 using Noggog;
@@ -12,17 +13,15 @@ namespace SynthesisRPGLoot.Analyzers
 {
     public class ObjectEffectsAnalyzer
     {
-        private readonly EnchantmentSettings _settings = Program.Settings.EnchantmentSettings;
+        private readonly EnchantmentSettings _settings;
 
         public Dictionary<FormKey, IObjectEffectGetter> AllObjectEffects { get; set; }
 
-        private IPatcherState<ISkyrimMod, ISkyrimModGetter> State { get; set; }
-
-        public ObjectEffectsAnalyzer(IPatcherState<ISkyrimMod, ISkyrimModGetter> state)
+        public ObjectEffectsAnalyzer(ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, EnchantmentSettings settings)
         {
-            State = state;
+            _settings = settings;
 
-            var pluginObjectEffectGroups = state.LoadOrder.ListedOrder.Select(listing => listing.Mod).NotNull()
+            var pluginObjectEffectGroups = loadOrder.PriorityOrder.Select(listing => (IModListingGetter<ISkyrimModGetter>)listing).Select(listing => listing.Mod).NotNull()
                 .Select(x => (x.ModKey, x.ObjectEffects)).AsParallel()
                 .Where(x => x.ObjectEffects.Count > 0 && _settings.PluginList.Contains(x.ModKey))
                 .Select(x => x.ObjectEffects).Distinct()
@@ -37,7 +36,7 @@ namespace SynthesisRPGLoot.Analyzers
 
 
             AllObjectEffects =
-                State.LoadOrder.PriorityOrder.ObjectEffect().WinningOverrides()
+                loadOrder.PriorityOrder.ObjectEffect().WinningOverrides()
                     .Where(x => x.Name != null)
                     .Where(x =>
                     {

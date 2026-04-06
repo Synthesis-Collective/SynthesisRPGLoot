@@ -7,6 +7,8 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.FormKeys.SkyrimSE;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Strings;
 using Mutagen.Bethesda.Synthesis;
@@ -18,17 +20,22 @@ namespace SynthesisRPGLoot.Analyzers
 
         private readonly ObjectEffectsAnalyzer _objectEffectsAnalyzer;
 
-        public ArmorAnalyzer(IPatcherState<ISkyrimMod, ISkyrimModGetter> state,
-            ObjectEffectsAnalyzer objectEffectsAnalyzer)
+        private readonly Settings.Settings _settings;
+
+        public ArmorAnalyzer(ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, ISkyrimMod patchMod,
+            ObjectEffectsAnalyzer objectEffectsAnalyzer, Settings.Settings settings)
         {
-            RarityAndVariationDistributionSettings = Program.Settings.RarityAndVariationDistributionSettings;
+            _settings = settings;
+            RarityAndVariationDistributionSettings = settings.RarityAndVariationDistributionSettings;
             GearSettings = RarityAndVariationDistributionSettings.ArmorSettings;
-            ConfiguredNameGenerator = new (2);
+            ConfiguredNameGenerator = new (2,settings);
 
             EditorIdPrefix = "HAL_ARMOR_";
             ItemTypeDescriptor = " armor";
 
-            State = state;
+            LoadOrder = loadOrder;
+            LinkCache = linkCache;
+            PatchMod = patchMod;
             _objectEffectsAnalyzer = objectEffectsAnalyzer;
 
             VarietyCountPerRarity = GearSettings.VarietyCountPerItem;
@@ -55,18 +62,23 @@ namespace SynthesisRPGLoot.Analyzers
             
             GeneratedItemCache = new();
             GeneratedLeveledItemsCache = new();
+
+            Random = new(settings.GeneralSettings.RandomGenerationSeed);
+            LeveledListFlagSettings = settings.GeneralSettings.LeveledListFlagSettings;
+            EnchantmentSeparatorString = settings.NameGeneratorSettings.EnchantmentSeparator;
+            LastEnchantmentSeparatorString = settings.NameGeneratorSettings.LastEnchantmentSeparator;
         }
 
         protected override void AnalyzeGear()
         {
-            AllLeveledLists = State.LoadOrder.PriorityOrder.WinningOverrides<ILeveledItemGetter>().ToHashSet();
+            AllLeveledLists = LoadOrder.PriorityOrder.WinningOverrides<ILeveledItemGetter>().ToHashSet();
 
             AllListItems = AllLeveledLists.SelectMany(lst => lst.Entries?.Select(entry =>
                                                              {
                                                                  if (entry.Data?.Reference.FormKey == default)
                                                                      return default;
                                                                  if (entry.Data == null) return default;
-                                                                 if (!State.LinkCache.TryResolve<IArmorGetter>(
+                                                                 if (!LinkCache.TryResolve<IArmorGetter>(
                                                                          entry.Data.Reference.FormKey,
                                                                          out var resolved))
                                                                      return default;
@@ -186,7 +198,7 @@ namespace SynthesisRPGLoot.Analyzers
                     return armorGetter.FormKey;
                 }
 
-                var newArmor = State.PatchMod.Armors.AddNewLocking(State.PatchMod.GetNextFormKey());
+                var newArmor = PatchMod.Armors.AddNewLocking(PatchMod.GetNextFormKey());
                 newArmor.DeepCopyIn(item.Resolved);
                 newArmor.EditorID = newArmorEditorId;
                 newArmor.ObjectEffect.SetTo(generatedEnchantmentFormKey);
@@ -194,7 +206,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 newArmor.Name = LabelMaker(rarity,itemName,effects);
                 
-                newArmor.TemplateArmor = (IFormLinkNullable<IArmorGetter>) item.Resolved.ToNullableLinkGetter();
+                newArmor.TemplateArmor = item.Resolved.ToNullableLink();
 
                 if (!RarityClasses[rarity].AllowDisenchanting)
                 {
@@ -203,7 +215,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 GeneratedItemCache.Add(newArmor.EditorID, newArmor);
                 
-                if (Program.Settings.GeneralSettings.LogGeneratedItems)
+                if (_settings.GeneralSettings.LogGeneratedItems)
                     Console.WriteLine($"Generated {newArmor.Name}");
                 
                 return newArmor.FormKey;
@@ -213,10 +225,10 @@ namespace SynthesisRPGLoot.Analyzers
                 var newArmorEditorId = EditorIdPrefix + item.Resolved.EditorID;
                 if (GeneratedItemCache.TryGetValue(newArmorEditorId, out var armorGetter))
                 {
-                    return State.PatchMod.Armors.GetOrAddAsOverride(armorGetter).FormKey;
+                    return PatchMod.Armors.GetOrAddAsOverride(armorGetter).FormKey;
                 }
 
-                var newArmor = State.PatchMod.Armors.AddNewLocking(State.PatchMod.GetNextFormKey());
+                var newArmor = PatchMod.Armors.AddNewLocking(PatchMod.GetNextFormKey());
                 newArmor.DeepCopyIn(item.Resolved);
                 newArmor.EditorID = newArmorEditorId;
 
@@ -226,7 +238,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 GeneratedItemCache.Add(newArmor.EditorID, newArmor);
                 
-                if (Program.Settings.GeneralSettings.LogGeneratedItems)
+                if (_settings.GeneralSettings.LogGeneratedItems)
                     Console.WriteLine($"Generated {newArmor.Name}");
 
                 return newArmor.FormKey;

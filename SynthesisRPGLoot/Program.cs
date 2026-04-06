@@ -38,10 +38,10 @@ namespace SynthesisRPGLoot
             Settings.RarityAndVariationDistributionSettings.ArmorSettings.RarityClasses.Sort();
             Settings.RarityAndVariationDistributionSettings.WeaponSettings.RarityClasses.Sort();
             
-            ObjectEffectsAnalyzer objectEffectsAnalyzer = new(state);
+            ObjectEffectsAnalyzer objectEffectsAnalyzer = new(state.LoadOrder, Settings.EnchantmentSettings);
             
-            var armor = new ArmorAnalyzer(state, objectEffectsAnalyzer);
-            var weapon = new WeaponAnalyzer(state, objectEffectsAnalyzer);
+            var armor = new ArmorAnalyzer(state.LoadOrder, state.LinkCache, state.PatchMod, objectEffectsAnalyzer, Settings);
+            var weapon = new WeaponAnalyzer(state.LoadOrder, state.LinkCache, state.PatchMod, objectEffectsAnalyzer, Settings);
             
             Console.WriteLine(
                 "------------------------------------------------------------------------------------------------------");

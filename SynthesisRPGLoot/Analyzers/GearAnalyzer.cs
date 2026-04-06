@@ -6,6 +6,8 @@ using SynthesisRPGLoot.Settings.Enums;
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Synthesis;
 using SynthesisRPGLoot.Generators;
@@ -27,7 +29,9 @@ namespace SynthesisRPGLoot.Analyzers
         protected List<RarityClass> RarityClasses;
 
         protected int VarietyCountPerRarity;
-        protected IPatcherState<ISkyrimMod, ISkyrimModGetter> State { get; init; }
+        protected ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> LoadOrder { get; init; }
+        protected ILinkCache<ISkyrimMod, ISkyrimModGetter> LinkCache { get; init; }
+        protected ISkyrimMod PatchMod { get; init; }
 
         protected Dictionary<int, ResolvedEnchantment[]> ByLevelIndexed;
 
@@ -43,7 +47,7 @@ namespace SynthesisRPGLoot.Analyzers
 
         private HashSet<ResolvedListItem<TType>> BaseItems { get; set; }
 
-        protected Dictionary<FormKey, IObjectEffectGetter> AllObjectEffects { get; set; }
+        public Dictionary<FormKey, IObjectEffectGetter> AllObjectEffects { get; set; }
 
         protected ResolvedEnchantment[] AllEnchantments { get; set; }
 
@@ -53,16 +57,13 @@ namespace SynthesisRPGLoot.Analyzers
         protected (short Key, HashSet<ResolvedEnchantment>)[] ByLevel { get; set; }
 
 
-        protected readonly Random Random = new(Program.Settings.GeneralSettings.RandomGenerationSeed);
+        protected Random Random;
 
-        private readonly LeveledListFlagSettings _leveledListFlagSettings =
-            Program.Settings.GeneralSettings.LeveledListFlagSettings;
+        protected LeveledListFlagSettings LeveledListFlagSettings;
 
-        private readonly string _enchantmentSeparatorString =
-            Program.Settings.NameGeneratorSettings.EnchantmentSeparator;
+        protected string EnchantmentSeparatorString;
 
-        private readonly string _lastEnchantmentSeparatorString =
-            Program.Settings.NameGeneratorSettings.LastEnchantmentSeparator;
+        protected string LastEnchantmentSeparatorString;
 
         protected string EditorIdPrefix;
 
@@ -150,7 +151,7 @@ namespace SynthesisRPGLoot.Analyzers
 
             foreach (var ench in BaseItems)
             {
-                var entries = State.PatchMod.LeveledItems
+                var entries = PatchMod.LeveledItems
                     .GetOrAddAsOverride(ench.List).Entries?.Where(entry =>
                         entry.Data?.Reference.FormKey == ench.Resolved.FormKey);
 
@@ -162,11 +163,11 @@ namespace SynthesisRPGLoot.Analyzers
                 LeveledItem topLevelList;
                 if (GeneratedLeveledItemsCache.TryGetValue(topLevelListEditorId, out var topLeveledListGetter))
                 {
-                    topLevelList = State.PatchMod.LeveledItems.GetOrAddAsOverride(topLeveledListGetter);
+                    topLevelList = PatchMod.LeveledItems.GetOrAddAsOverride(topLeveledListGetter);
                 }
                 else
                 {
-                    topLevelList = State.PatchMod.LeveledItems.AddNewLocking(State.PatchMod.GetNextFormKey());
+                    topLevelList = PatchMod.LeveledItems.AddNewLocking(PatchMod.GetNextFormKey());
                     topLevelList.DeepCopyIn(ench.List);
                     topLevelList.Entries = [];
                     topLevelList.EditorID = topLevelListEditorId;
@@ -191,11 +192,11 @@ namespace SynthesisRPGLoot.Analyzers
                         if (GeneratedLeveledItemsCache.TryGetValue(leveledItemEditorId,
                                 out var leveledItemGetter))
                         {
-                            leveledItem = State.PatchMod.LeveledItems.GetOrAddAsOverride(leveledItemGetter);
+                            leveledItem = PatchMod.LeveledItems.GetOrAddAsOverride(leveledItemGetter);
                         }
                         else
                         {
-                            leveledItem = State.PatchMod.LeveledItems.AddNewLocking(State.PatchMod.GetNextFormKey());
+                            leveledItem = PatchMod.LeveledItems.AddNewLocking(PatchMod.GetNextFormKey());
                             leveledItem.DeepCopyIn(ench.List);
                             leveledItem.Entries = [];
                             leveledItem.EditorID = leveledItemEditorId;
@@ -254,7 +255,7 @@ namespace SynthesisRPGLoot.Analyzers
             var objectEffectEditorId = EditorIdPrefix + "ENCH_" + RarityClasses[rarity].Label.ToUpper() + "_" +
                                        GetEnchantmentsStringForName(effects, true);
 
-            var newObjectEffectGetter = State.PatchMod.ObjectEffects.AddNewLocking(State.PatchMod.GetNextFormKey());
+            var newObjectEffectGetter = PatchMod.ObjectEffects.AddNewLocking(PatchMod.GetNextFormKey());
             newObjectEffectGetter.DeepCopyIn(effects.First().Enchantment);
             newObjectEffectGetter.EditorID = objectEffectEditorId;
             newObjectEffectGetter.Name = RarityClasses[rarity].Label + " " + GetEnchantmentsStringForName(effects);
@@ -279,24 +280,24 @@ namespace SynthesisRPGLoot.Analyzers
                     .Select(resolvedEnchantment => resolvedEnchantment.Enchantment.EditorID).ToArray());
             }
 
-            return BeatifyLabel(string.Join(_enchantmentSeparatorString, resolvedEnchantments
+            return BeatifyLabel(string.Join(EnchantmentSeparatorString, resolvedEnchantments
                 .Select(resolvedEnchantment => resolvedEnchantment.Enchantment.Name?.String).ToArray()));
         }
 
         private string BeatifyLabel(string labelString)
         {
-            var lastSeparatorIndex = labelString.LastIndexOf(_enchantmentSeparatorString, StringComparison.Ordinal);
+            var lastSeparatorIndex = labelString.LastIndexOf(EnchantmentSeparatorString, StringComparison.Ordinal);
             if (lastSeparatorIndex == -1) return labelString;
-            return labelString.Remove(lastSeparatorIndex, _enchantmentSeparatorString.Length)
-                .Insert(lastSeparatorIndex, _lastEnchantmentSeparatorString);
+            return labelString.Remove(lastSeparatorIndex, EnchantmentSeparatorString.Length)
+                .Insert(lastSeparatorIndex, LastEnchantmentSeparatorString);
         }
 
         private LeveledItem.Flag GetLeveledItemFlags()
         {
             var flag = LeveledItem.Flag.CalculateForEachItemInCount;
-            if (_leveledListFlagSettings.CalculateFromAllLevelsLessThanOrEqualPlayer)
+            if (LeveledListFlagSettings.CalculateFromAllLevelsLessThanOrEqualPlayer)
                 flag |= LeveledItem.Flag.CalculateFromAllLevelsLessThanOrEqualPlayer;
-            if (_leveledListFlagSettings.SpecialLoot)
+            if (LeveledListFlagSettings.SpecialLoot)
                 flag |= LeveledItem.Flag.SpecialLoot;
             return flag;
         }

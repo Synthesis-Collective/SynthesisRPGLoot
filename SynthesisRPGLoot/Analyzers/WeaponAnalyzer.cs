@@ -7,6 +7,8 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.FormKeys.SkyrimSE;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Records;
+using Mutagen.Bethesda.Plugins.Cache;
+using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Strings;
 using Mutagen.Bethesda.Synthesis;
@@ -18,17 +20,22 @@ namespace SynthesisRPGLoot.Analyzers
 
         private readonly ObjectEffectsAnalyzer _objectEffectsAnalyzer;
 
-        public WeaponAnalyzer(IPatcherState<ISkyrimMod, ISkyrimModGetter> state,
-            ObjectEffectsAnalyzer objectEffectsAnalyzer)
+        private readonly Settings.Settings _settings;
+
+        public WeaponAnalyzer(ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, ISkyrimMod patchMod,
+            ObjectEffectsAnalyzer objectEffectsAnalyzer, Settings.Settings settings)
         {
-            RarityAndVariationDistributionSettings = Program.Settings.RarityAndVariationDistributionSettings;
-            GearSettings = RarityAndVariationDistributionSettings.ArmorSettings;
-            ConfiguredNameGenerator = new(3);
+            _settings = settings;
+            RarityAndVariationDistributionSettings = settings.RarityAndVariationDistributionSettings;
+            GearSettings = RarityAndVariationDistributionSettings.WeaponSettings;
+            ConfiguredNameGenerator = new(3,settings);
 
             EditorIdPrefix = "HAL_WEAPON_";
             ItemTypeDescriptor = " weapon";
 
-            State = state;
+            LoadOrder = loadOrder;
+            LinkCache = linkCache;
+            PatchMod = patchMod;
             _objectEffectsAnalyzer = objectEffectsAnalyzer;
 
             VarietyCountPerRarity = GearSettings.VarietyCountPerItem;
@@ -55,18 +62,23 @@ namespace SynthesisRPGLoot.Analyzers
 
             GeneratedItemCache = new();
             GeneratedLeveledItemsCache = new();
+
+            Random = new(settings.GeneralSettings.RandomGenerationSeed);
+            LeveledListFlagSettings = settings.GeneralSettings.LeveledListFlagSettings;
+            EnchantmentSeparatorString = settings.NameGeneratorSettings.EnchantmentSeparator;
+            LastEnchantmentSeparatorString = settings.NameGeneratorSettings.LastEnchantmentSeparator;
         }
 
         protected override void AnalyzeGear()
         {
-            AllLeveledLists = State.LoadOrder.PriorityOrder.WinningOverrides<ILeveledItemGetter>().ToHashSet();
+            AllLeveledLists = LoadOrder.PriorityOrder.WinningOverrides<ILeveledItemGetter>().ToHashSet();
 
             AllListItems = AllLeveledLists.SelectMany(lst => lst.Entries?.Select(entry =>
                                                              {
                                                                  if (entry.Data?.Reference.FormKey == default)
                                                                      return default;
                                                                  if (entry.Data == null) return default;
-                                                                 if (!State.LinkCache.TryResolve<IWeaponGetter>(
+                                                                 if (!LinkCache.TryResolve<IWeaponGetter>(
                                                                          entry.Data.Reference.FormKey,
                                                                          out var resolved))
                                                                      return default;
@@ -186,7 +198,7 @@ namespace SynthesisRPGLoot.Analyzers
                     return weaponGetter.FormKey;
                 }
 
-                var newWeapon = State.PatchMod.Weapons.AddNewLocking(State.PatchMod.GetNextFormKey());
+                var newWeapon = PatchMod.Weapons.AddNewLocking(PatchMod.GetNextFormKey());
                 newWeapon.DeepCopyIn(item.Resolved);
                 newWeapon.EditorID = newWeaponEditorId;
                 newWeapon.ObjectEffect.SetTo(generatedEnchantmentFormKey);
@@ -194,7 +206,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 newWeapon.Name = LabelMaker(rarity,itemName,effects);
                 
-                newWeapon.Template = (IFormLinkNullable<IWeaponGetter>) item.Resolved.ToNullableLinkGetter();
+                newWeapon.Template = item.Resolved.ToNullableLink();
 
                 if (!RarityClasses[rarity].AllowDisenchanting)
                 {
@@ -203,7 +215,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 GeneratedItemCache.Add(newWeapon.EditorID, newWeapon);
                 
-                if (Program.Settings.GeneralSettings.LogGeneratedItems)
+                if (_settings.GeneralSettings.LogGeneratedItems)
                     Console.WriteLine($"Generated {newWeapon.Name}");
 
                 return newWeapon.FormKey;
@@ -216,7 +228,7 @@ namespace SynthesisRPGLoot.Analyzers
                     return weaponGetter.FormKey;
                 }
                 
-                var newWeapon = State.PatchMod.Weapons.AddNewLocking(State.PatchMod.GetNextFormKey());
+                var newWeapon = PatchMod.Weapons.AddNewLocking(PatchMod.GetNextFormKey());
                 newWeapon.DeepCopyIn(item.Resolved);
                 newWeapon.EditorID = newWeaponEditorId;
 
@@ -226,7 +238,7 @@ namespace SynthesisRPGLoot.Analyzers
                 
                 GeneratedItemCache.Add(newWeapon.EditorID, newWeapon);
                 
-                if (Program.Settings.GeneralSettings.LogGeneratedItems)
+                if (_settings.GeneralSettings.LogGeneratedItems)
                     Console.WriteLine($"Generated {newWeapon.Name}");
 
                 return newWeapon.FormKey;

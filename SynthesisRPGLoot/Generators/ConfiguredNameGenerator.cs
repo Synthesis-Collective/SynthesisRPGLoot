@@ -4,14 +4,14 @@ using Syllabore;
 
 namespace SynthesisRPGLoot.Generators;
 
-public class ConfiguredNameGenerator : NameGenerator
+    public class ConfiguredNameGenerator : NameGenerator
 {
     //TODO: Implement the Name Generator in the Code
     
-    public ConfiguredNameGenerator(int seedSalt)
+    public ConfiguredNameGenerator(int seedSalt ,Settings.Settings settings)
     {
-        Random random = new(Program.Settings.GeneralSettings.RandomGenerationSeed+seedSalt);
-        var syllaboreSettings = Program.Settings.NameGeneratorSettings.SyllaboreSettings;
+        Random random = new(settings.GeneralSettings.RandomGenerationSeed+seedSalt);
+        var syllaboreSettings = settings.NameGeneratorSettings.SyllaboreSettings;
         
         //Add Syllable Settings
         var syllableGenerator = new DefaultSyllableGenerator();
