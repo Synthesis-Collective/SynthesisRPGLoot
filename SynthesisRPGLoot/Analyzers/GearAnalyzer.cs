@@ -241,7 +241,7 @@ namespace SynthesisRPGLoot.Analyzers
 
         private static IEnumerable<IFormLink<IKeywordGetter>> GetKeywords(TType item)
         {
-            return ((dynamic)item).Keywords ?? Array.Empty<IFormLink<IKeywordGetter>>();
+            return ((IItemGetter)item).Keywords ?? Array.Empty<IFormLink<IKeywordGetter>>();
         }
 
         public void PreGenerationCheck()
