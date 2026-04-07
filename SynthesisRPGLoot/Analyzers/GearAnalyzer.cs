@@ -224,24 +224,67 @@ namespace SynthesisRPGLoot.Analyzers
             return !Extensions.CheckKeywords(kws);
         }
 
-        private static bool GetObjectEffectIsNull(TType item)
+        
+        //TODO: Investigate implementation of Dictionary-based Caching for this.
+        
+        private bool GetObjectEffectIsNull(TType item)
         {
+            if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
+            {
+                return armorGetter.ObjectEffect.IsNull;
+            }
+
+            if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+            {
+                return weaponGetter.ObjectEffect.IsNull;
+            }
+            
             return ((dynamic)item).ObjectEffect.IsNull;
         }
 
-        private static FormKey GetObjectEffectFormKey(TType item)
+        private FormKey GetObjectEffectFormKey(TType item)
         {
+            if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
+            {
+                return armorGetter.ObjectEffect.FormKey;
+            }
+
+            if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+            {
+                return weaponGetter.ObjectEffect.FormKey;
+            }
+            
             return ((dynamic)item).ObjectEffect.FormKey;
         }
 
-        private static ushort? GetEnchantmentAmount(TType item)
+        private ushort? GetEnchantmentAmount(TType item)
         {
+            if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
+            {
+                return armorGetter.EnchantmentAmount;
+            }
+
+            if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+            {
+                return weaponGetter.EnchantmentAmount;
+            }
+            
             return ((dynamic)item).EnchantmentAmount;
         }
 
-        private static IEnumerable<IFormLink<IKeywordGetter>> GetKeywords(TType item)
+        private IEnumerable<IFormLinkGetter<IKeywordGetter>> GetKeywords(TType item)
         {
-            return ((IItemGetter)item).Keywords ?? Array.Empty<IFormLink<IKeywordGetter>>();
+                if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
+                {
+                    return armorGetter.Keywords ?? [];
+                }
+
+                if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+                {
+                    return weaponGetter.Keywords ?? [];
+                }
+              
+                return ((dynamic)item).Keywords ?? Array.Empty<IFormLinkGetter<IKeywordGetter>>();
         }
 
         public void PreGenerationCheck()
