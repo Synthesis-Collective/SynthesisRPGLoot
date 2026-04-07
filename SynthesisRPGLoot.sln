@@ -2,8 +2,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynthesisRPGLoot", "SynthesisRPGLoot\SynthesisRPGLoot.csproj", "{E3C85A2B-4E6D-4B5D-9E8D-810116F644AB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SynthesisRPGLoot.Tests", "SynthesisRPGLoot.Tests\SynthesisRPGLoot.Tests.csproj", "{90730C74-D450-4844-BF96-F4F901454337}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,18 +24,6 @@ Global
 		{E3C85A2B-4E6D-4B5D-9E8D-810116F644AB}.Release|x64.Build.0 = Release|Any CPU
 		{E3C85A2B-4E6D-4B5D-9E8D-810116F644AB}.Release|x86.ActiveCfg = Release|Any CPU
 		{E3C85A2B-4E6D-4B5D-9E8D-810116F644AB}.Release|x86.Build.0 = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|x64.Build.0 = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Debug|x86.Build.0 = Debug|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|Any CPU.Build.0 = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|x64.ActiveCfg = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|x64.Build.0 = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|x86.ActiveCfg = Release|Any CPU
-		{90730C74-D450-4844-BF96-F4F901454337}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
