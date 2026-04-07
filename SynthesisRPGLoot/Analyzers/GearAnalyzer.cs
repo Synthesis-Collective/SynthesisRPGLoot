@@ -18,11 +18,12 @@ using SynthesisRPGLoot.Settings;
 namespace SynthesisRPGLoot.Analyzers
 {
     public abstract class GearAnalyzer<TType>
-        where TType : class, IMajorRecordGetter
+        where TType : class, IMajorRecordGetter, IItemGetter
 
     {
         protected GearSettings GearSettings;
         protected ConfiguredNameGenerator ConfiguredNameGenerator;
+        protected Settings.Settings Settings;
 
         protected RarityAndVariationDistributionSettings RarityAndVariationDistributionSettings;
 
@@ -73,12 +74,175 @@ namespace SynthesisRPGLoot.Analyzers
         
         protected Dictionary<string, TType> GeneratedItemCache { get; init; }
 
+        protected GearAnalyzer(GearSettings gearSettings, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, ISkyrimMod patchMod, ObjectEffectsAnalyzer objectEffectsAnalyzer, Settings.Settings settings)
+        {
+            Settings = settings;
+            GearSettings = gearSettings;
+            RarityAndVariationDistributionSettings = settings.RarityAndVariationDistributionSettings;
+            LoadOrder = loadOrder;
+            LinkCache = linkCache;
+            PatchMod = patchMod;
+            AllObjectEffects = objectEffectsAnalyzer.AllObjectEffects;
+
+            VarietyCountPerRarity = GearSettings.VarietyCountPerItem;
+            RarityClasses = GearSettings.RarityClasses;
+
+            AllRpgEnchants = new SortedList<string, ResolvedEnchantment[]>[RarityClasses.Count];
+            for (var i = 0; i < AllRpgEnchants.Length; i++)
+            {
+                AllRpgEnchants[i] = new();
+            }
+
+            ChosenRpgEnchants = new Dictionary<string, FormKey>[RarityClasses.Count];
+            for (var i = 0; i < ChosenRpgEnchants.Length; i++)
+            {
+                ChosenRpgEnchants[i] = new();
+            }
+
+            ChosenRpgEnchantEffects = new Dictionary<FormKey, ResolvedEnchantment[]>[RarityClasses.Count];
+            for (var i = 0; i < ChosenRpgEnchantEffects.Length; i++)
+            {
+                ChosenRpgEnchantEffects[i] = new();
+            }
+            
+            GeneratedItemCache = new();
+            GeneratedLeveledItemsCache = new();
+
+            Random = new(settings.GeneralSettings.RandomGenerationSeed);
+            LeveledListFlagSettings = settings.GeneralSettings.LeveledListFlagSettings;
+            EnchantmentSeparatorString = settings.NameGeneratorSettings.EnchantmentSeparator;
+            LastEnchantmentSeparatorString = settings.NameGeneratorSettings.LastEnchantmentSeparator;
+        }
+
         public void Analyze()
         {
             AnalyzeGear();
         }
 
-        protected abstract void AnalyzeGear();
+        protected virtual void AnalyzeGear()
+        {
+            AllLeveledLists = LoadOrder.PriorityOrder.WinningOverrides<ILeveledItemGetter>().ToHashSet();
+
+            AllListItems = AllLeveledLists.SelectMany(lst => lst.Entries?.Select(entry =>
+            {
+                if (entry.Data?.Reference.FormKey == default)
+                    return default;
+                if (entry.Data == null) return default;
+                if (!LinkCache.TryResolve<TType>(entry.Data.Reference.FormKey, out var resolved))
+                    return default;
+                if (!IsValidItem(resolved)) return default;
+                return new ResolvedListItem<TType>
+                {
+                    List = lst,
+                    Entry = entry,
+                    Resolved = resolved
+                };
+            }).Where(resolvedListItem => resolvedListItem != default)
+            ?? Array.Empty<ResolvedListItem<TType>>())
+            .ToHashSet();
+
+            AllUnenchantedItems = AllListItems.Where(e => GetObjectEffectIsNull(e.Resolved)).ToHashSet();
+
+            AllEnchantedItems = AllListItems.Where(e => !GetObjectEffectIsNull(e.Resolved)).ToHashSet();
+
+            AllEnchantments = AllEnchantedItems
+                .Select(e => (e.Entry.Data!.Level, GetEnchantmentAmount(e.Resolved), GetObjectEffectFormKey(e.Resolved)))
+                .Distinct()
+                .Select(e =>
+                {
+                    var (level, enchantmentAmount, formKey) = e;
+                    if (!AllObjectEffects.TryGetValue(formKey, out var ench))
+                        return default;
+                    return new ResolvedEnchantment
+                    {
+                        Level = level,
+                        Amount = enchantmentAmount,
+                        Enchantment = ench
+                    };
+                })
+                .Where(e => e != default)
+                .ToArray();
+
+            AllLevels = AllEnchantments.Select(e => e.Level).Distinct().ToHashSet();
+
+            var maxLvl = AllListItems.Select(i => i.Entry.Data!.Level).Distinct().ToHashSet().Max();
+
+            ByLevel = AllEnchantments.GroupBy(e => e.Level)
+                .OrderBy(e => e.Key)
+                .Select(e => (e.Key, e.ToHashSet()))
+                .ToArray();
+
+            ByLevelIndexed = Enumerable.Range(0, maxLvl + 1)
+                .Select(lvl => (lvl, ByLevel.Where(bl => bl.Key <= lvl).SelectMany(e => e.Item2).ToArray()))
+                .ToDictionary(kv => kv.lvl, kv => kv.Item2);
+
+            for (var coreEnchant = 0; coreEnchant < AllEnchantments.Length; coreEnchant++)
+            {
+                for (var i = 0; i < AllRpgEnchants.Length; i++)
+                {
+                    var forLevel = AllEnchantments;
+                    var takeMin = Math.Min(RarityClasses[i].NumEnchantments, forLevel.Length);
+                    if (takeMin <= 0) continue;
+                    var resolvedEnchantments = new ResolvedEnchantment[takeMin];
+                    resolvedEnchantments[0] = AllEnchantments[coreEnchant];
+
+                    var result = new int[takeMin];
+                    for (var j = 0; j < takeMin; ++j)
+                        result[j] = j;
+
+                    for (var t = takeMin; t < AllEnchantments.Length; ++t)
+                    {
+                        var m = Random.Next(0, t + 1);
+                        if (m >= takeMin) continue;
+                        result[m] = t;
+                        if (t != coreEnchant) continue;
+                        result[m] = result[0];
+                        result[0] = t;
+                    }
+
+                    result[0] = coreEnchant;
+
+                    for (var len = 0; len < takeMin; len++)
+                    {
+                        resolvedEnchantments[len] = AllEnchantments[result[len]];
+                    }
+
+                    var newEnchantmentsForName = GetEnchantmentsStringForName(resolvedEnchantments);
+                    var enchants = AllRpgEnchants[i];
+
+                    if (!enchants.ContainsKey(RarityClasses[i].Label + " " + newEnchantmentsForName))
+                    {
+                        enchants.Add(RarityClasses[i].Label + " " + newEnchantmentsForName, resolvedEnchantments);
+                    }
+                }
+            }
+        }
+
+        protected virtual bool IsValidItem(TType item)
+        {
+            var kws = GetKeywords(item);
+            return !Extensions.CheckKeywords(kws);
+        }
+
+        private static bool GetObjectEffectIsNull(TType item)
+        {
+            return ((dynamic)item).ObjectEffect.IsNull;
+        }
+
+        private static FormKey GetObjectEffectFormKey(TType item)
+        {
+            return ((dynamic)item).ObjectEffect.FormKey;
+        }
+
+        private static ushort? GetEnchantmentAmount(TType item)
+        {
+            return ((dynamic)item).EnchantmentAmount;
+        }
+
+        private static IEnumerable<IFormLink<IKeywordGetter>> GetKeywords(TType item)
+        {
+            return ((dynamic)item).Keywords ?? Array.Empty<IFormLink<IKeywordGetter>>();
+        }
 
         public void PreGenerationCheck()
         {
