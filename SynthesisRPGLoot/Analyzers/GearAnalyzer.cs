@@ -9,7 +9,6 @@ using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Skyrim;
-using Mutagen.Bethesda.Synthesis;
 using SynthesisRPGLoot.Generators;
 using SynthesisRPGLoot.Settings;
 
@@ -19,7 +18,6 @@ namespace SynthesisRPGLoot.Analyzers
 {
     public abstract class GearAnalyzer<TType>
         where TType : class, IMajorRecordGetter, IItemGetter
-
     {
         protected GearSettings GearSettings;
         protected ConfiguredNameGenerator ConfiguredNameGenerator;
@@ -74,6 +72,10 @@ namespace SynthesisRPGLoot.Analyzers
         
         protected Dictionary<string, TType> GeneratedItemCache { get; init; }
 
+        protected Dictionary<FormKey, IArmorGetter> FormKeyToArmorGetterCache { get; } = [];
+
+        protected Dictionary<FormKey, IWeaponGetter> FormKeyToWeaponGetterCache { get; } = [];
+        
         protected GearAnalyzer(GearSettings gearSettings, ILoadOrderGetter<IModListingGetter<ISkyrimModGetter>> loadOrder, ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, ISkyrimMod patchMod, ObjectEffectsAnalyzer objectEffectsAnalyzer, Settings.Settings settings)
         {
             Settings = settings;
@@ -224,33 +226,52 @@ namespace SynthesisRPGLoot.Analyzers
             return !Extensions.CheckKeywords(kws);
         }
 
-        
-        //TODO: Investigate implementation of Dictionary-based Caching for this.
-        
         private bool GetObjectEffectIsNull(TType item)
         {
+            if (FormKeyToArmorGetterCache.TryGetValue(item.FormKey, out var cachedArmorGetter))
+            {
+                return cachedArmorGetter.ObjectEffect.IsNull;
+            }
+            
             if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
             {
+                FormKeyToArmorGetterCache.Add(item.FormKey, armorGetter);
                 return armorGetter.ObjectEffect.IsNull;
             }
 
-            if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+            if (FormKeyToWeaponGetterCache.TryGetValue(item.FormKey, out var cachedWeaponGetter))
             {
-                return weaponGetter.ObjectEffect.IsNull;
+                return cachedWeaponGetter.ObjectEffect.IsNull;
             }
-            
-            return ((dynamic)item).ObjectEffect.IsNull;
+
+            if (!item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+                return ((dynamic) item).ObjectEffect.IsNull;
+            FormKeyToWeaponGetterCache.Add(item.FormKey,weaponGetter);
+            return weaponGetter.ObjectEffect.IsNull;
+
         }
 
         private FormKey GetObjectEffectFormKey(TType item)
         {
+            if (FormKeyToArmorGetterCache.TryGetValue(item.FormKey, out var cachedArmorGetter))
+            {
+                return cachedArmorGetter.ObjectEffect.FormKey;
+            }
+
             if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
             {
+                FormKeyToArmorGetterCache.Add(item.FormKey, armorGetter);
                 return armorGetter.ObjectEffect.FormKey;
+            }
+
+            if (FormKeyToWeaponGetterCache.TryGetValue(item.FormKey, out var cachedWeaponGetter))
+            {
+                return cachedWeaponGetter.ObjectEffect.FormKey;
             }
 
             if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
             {
+                FormKeyToWeaponGetterCache.Add(item.FormKey,weaponGetter);
                 return weaponGetter.ObjectEffect.FormKey;
             }
             
@@ -259,32 +280,51 @@ namespace SynthesisRPGLoot.Analyzers
 
         private ushort? GetEnchantmentAmount(TType item)
         {
+            if (FormKeyToArmorGetterCache.TryGetValue(item.FormKey, out var cachedArmorGetter))
+            {
+                return cachedArmorGetter.EnchantmentAmount;
+            }
             if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
             {
+                FormKeyToArmorGetterCache.Add(item.FormKey, armorGetter);
                 return armorGetter.EnchantmentAmount;
             }
 
-            if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+            if (FormKeyToWeaponGetterCache.TryGetValue(item.FormKey, out var cachedWeaponGetter))
             {
-                return weaponGetter.EnchantmentAmount;
+                return cachedWeaponGetter.EnchantmentAmount;
             }
-            
-            return ((dynamic)item).EnchantmentAmount;
+
+            if (!item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+                return ((dynamic) item).EnchantmentAmount;
+            FormKeyToWeaponGetterCache.Add(item.FormKey,weaponGetter);
+            return weaponGetter.EnchantmentAmount;
+
         }
 
         private IEnumerable<IFormLinkGetter<IKeywordGetter>> GetKeywords(TType item)
         {
-                if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
-                {
-                    return armorGetter.Keywords ?? [];
-                }
 
-                if (item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
-                {
-                    return weaponGetter.Keywords ?? [];
-                }
-              
-                return ((dynamic)item).Keywords ?? Array.Empty<IFormLinkGetter<IKeywordGetter>>();
+            if (FormKeyToArmorGetterCache.TryGetValue(item.FormKey, out var cachedArmorGetter))
+            {
+                return cachedArmorGetter.Keywords ?? [];
+            }
+            if (item.FormKey.ToLinkGetter<IArmorGetter>().TryResolve(LinkCache, out var armorGetter))
+            {
+                FormKeyToArmorGetterCache.Add(item.FormKey, armorGetter);
+                return armorGetter.Keywords ?? [];
+            }
+
+            if (FormKeyToWeaponGetterCache.TryGetValue(item.FormKey, out var cachedWeaponGetter))
+            {
+                return cachedWeaponGetter.Keywords ?? [];
+            }
+
+            if (!item.FormKey.ToLinkGetter<IWeaponGetter>().TryResolve(LinkCache, out var weaponGetter))
+                return ((dynamic) item).Keywords ?? Array.Empty<IFormLinkGetter<IKeywordGetter>>();
+            FormKeyToWeaponGetterCache.Add(item.FormKey,weaponGetter);
+            return weaponGetter.Keywords ?? [];
+
         }
 
         public void PreGenerationCheck()
